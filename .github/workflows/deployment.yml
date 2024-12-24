@@ -1,0 +1,64 @@
+name: Deploy & Test Frontend
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+
+jobs:
+  # Job 1: Build and Test
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up Node.js
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      # Step 3: Cache Node.js Modules
+      - name: Cache Node.js Modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      # Step 4: Install Dependencies
+      - name: Install Dependencies
+        run: npm install
+
+      # Step 5: Run Tests
+      - name: Run Tests
+        run: npm test -- --watchAll=false
+
+  # Job 2: Deploy (runs only if tests are successful)
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: success()  # Ensure deployment runs only if the build-and-test job succeeds
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Generate Deployment Package
+      - name: Generate Deployment Package
+        run: zip -r deploy.zip . -x '*.git*'
+
+      # Step 3: Deploy to Elastic Beanstalk
+      - name: Deploy to EB
+        uses: einaregilsson/beanstalk-deploy@v18
+        with:
+          aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          application_name: ${{ secrets.AWS_APPLICATION_NAME }}
+          environment_name: ${{ secrets.AWS_ENVIRONMENT_NAME }}
+          existing_bucket_name: ${{ secrets.AWS_EXISTING_BUCKET_NAME }}
+          region: ${{ secrets.AWS_REGION }}
+          version_label: ${{ github.sha }}
+          deployment_package: deploy.zip
